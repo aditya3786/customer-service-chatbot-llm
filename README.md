@@ -114,7 +114,7 @@ customer_service_chatbot_LLM/
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/<your-username>/customer-service-chatbot-llm.git
+git clone https://github.com/aditya3786/customer-service-chatbot-llm.git
 cd customer-service-chatbot-llm
 
 # 2. Install dependencies
