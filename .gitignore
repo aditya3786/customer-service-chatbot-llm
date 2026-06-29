@@ -5,8 +5,12 @@ __pycache__/
 *.pyc
 *.pyo
 
-# FAISS index (large binary, regenerated via "Create Knowledgebase")
+# FAISS indexes (large binaries, regenerated at runtime)
 src/faiss_index/
+src/medical_faiss_index/
+
+# Raw MedQuAD repo (nested git repo — too large, use parse_medquad.py to regenerate)
+dataset/MedQuAD/
 
 # macOS
 .DS_Store
