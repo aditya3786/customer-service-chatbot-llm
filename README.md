@@ -1,6 +1,6 @@
-# Customer Service Chatbot with Sentiment Analysis
+# Customer Service Chatbot with Sentiment Analysis & Medical Q&A
 
-An end-to-end LLM-powered customer service chatbot built with **Google Gemini**, **LangChain**, and **Streamlit**. Extended with **sentiment analysis** (Task 1 of the ElevanceSkills internship) to detect and respond appropriately to customer emotions.
+An end-to-end LLM-powered chatbot built with **Google Gemini**, **LangChain**, and **Streamlit** as part of the ElevanceSkills internship. Extends the training project with two internship tasks: sentiment-aware customer service and a medical Q&A system.
 
 ---
 
@@ -11,53 +11,55 @@ Customer support teams at e-learning platforms like Nullclass receive hundreds o
 1. **Volume** — human staff can't respond instantly at scale.
 2. **Tone mismatch** — a frustrated customer gets the same robotic response as a happy one, reducing satisfaction.
 
-This project addresses both by combining a RAG-based Q&A system with real-time sentiment detection that adapts the chatbot's tone to the customer's emotional state.
+This project addresses both by combining a RAG-based Q&A system with real-time sentiment detection. It is further extended with a specialized medical Q&A chatbot using NIH's MedQuAD dataset.
 
 ---
 
-## Dataset
+## Datasets
 
-- **Source**: `dataset/dataset.csv` — a real FAQ sheet used by Nullclass support staff
-- **Size**: 76 rows, 2 columns (`prompt`, `response`)
-- **Topics**: Course eligibility, pricing, EMI, tools (Power BI, Tableau), internships, certificates
-- **Encoding**: Windows-1252 (cp1252) — handled in the data loader
+| Dataset | Source | Size | Purpose |
+|---------|--------|------|---------|
+| `dataset/dataset.csv` | Nullclass FAQ sheet | 76 rows | Customer service Q&A |
+| `dataset/medquad.csv` | [MedQuAD (NIH)](https://github.com/abachaa/MedQuAD) | 5,068 rows | Medical Q&A |
 
 ---
 
 ## Methodology
 
-### 1. RAG Pipeline (Retrieval-Augmented Generation)
+### RAG Pipeline (shared by both chatbots)
 
 ```
 User Question
     ↓
-HuggingFace Embeddings (all-MiniLM-L6-v2, 384-dim)
+HuggingFace Embeddings (all-MiniLM-L6-v2, 384-dim, offline)
     ↓
 FAISS Vector Store (cosine similarity, threshold=0.7)
     ↓
-Top-k matching FAQ chunks
+Top-k matching chunks as context
     ↓
-Gemini 2.5 Flash (prompt = context + sentiment instruction + question)
-    ↓
-Answer grounded in FAQ data
+Gemini 2.5 Flash (context + question → grounded answer)
 ```
 
 **Why RAG over fine-tuning?**
-- No retraining needed when FAQs update — just rebuild the FAISS index
-- Answers are grounded in source data, reducing hallucinations
+- No retraining when data updates — just rebuild the FAISS index
+- Answers grounded in source data, reducing hallucinations
 - "I don't know" fallback for out-of-scope questions
 
-### 2. Sentiment Analysis (Task 1)
+---
 
-**Model chosen: VADER (Valence Aware Dictionary and sEntiment Reasoner)**
+## Task 1 — Sentiment Analysis Integration
 
-| Approach | Accuracy | Size | Latency | API Cost |
-|----------|----------|------|---------|----------|
-| VADER (chosen) | Good for conversational text | ~2 MB | <1 ms | Free, offline |
-| Transformer (e.g. RoBERTa) | Higher | ~500 MB | ~100 ms | Free, offline |
-| Gemini API | Highest | N/A | ~1 s | Uses quota |
+**Objective:** Detect customer emotions (positive/negative/neutral) and respond with appropriate tone.
 
-VADER was selected because it is purpose-built for short conversational text, runs entirely offline with zero latency overhead, and requires no additional model download.
+**Model: VADER (Valence Aware Dictionary and sEntiment Reasoner)**
+
+| Approach | Size | Latency | API Cost |
+|----------|------|---------|----------|
+| VADER *(chosen)* | ~2 MB | <1 ms | Free, offline |
+| Transformer (RoBERTa) | ~500 MB | ~100 ms | Free, offline |
+| Gemini API | N/A | ~1 s | Uses quota |
+
+VADER was selected because it is purpose-built for short conversational text, runs entirely offline, and requires no additional model download.
 
 **Sentiment thresholds (VADER standard):**
 - `compound ≥ 0.05` → Positive
@@ -72,19 +74,64 @@ VADER was selected because it is purpose-built for short conversational text, ru
 | Positive | "Match their positive energy with a warm, encouraging tone." |
 | Neutral | *(no instruction — standard factual response)* |
 
+**Features:**
+- Color-coded sentiment badge (😊/😟/😐) with confidence score
+- Empathy/warmth message for negative/positive queries
+- Tone-adapted LLM responses via `PromptTemplate.partial()`
+- 👍/👎 feedback buttons with session satisfaction tracking
+- 📊 Analytics dashboard — sentiment pie chart, confidence bar chart, query history
+
+**Sample Questions:**
+
+| Sentiment | Question |
+|-----------|----------|
+| Negative | *"This is terrible, I can't find anything useful!"* |
+| Positive | *"I love this course, it's absolutely amazing!"* |
+| Neutral | *"Do you have a JavaScript course?"* |
+| Neutral | *"Should I learn Power BI or Tableau?"* |
+
 ---
 
-## Features
+## Task 2 — Medical Q&A Chatbot (MedQuAD)
 
-- **Sentiment badge** with confidence score shown per query
-- **Empathy/warmth message** for negative/positive queries
-- **Tone-adapted LLM responses** via prompt injection
-- **👍/👎 feedback buttons** per response
-- **📊 Analytics dashboard** (separate tab):
-  - Sentiment distribution pie chart
-  - Confidence score bar chart per query
-  - Full query history table
-  - Session satisfaction %
+**Objective:** Build a specialized medical Q&A chatbot with retrieval and basic medical entity recognition.
+
+**Dataset:** MedQuAD — 5,068 Q&A pairs parsed from 5 NIH sources:
+
+| Source | Topic | Pairs |
+|--------|-------|-------|
+| CancerGov | Cancer types & treatments | ~729 |
+| GHR (Genetics Home Reference) | Genetic conditions | ~1,500 |
+| NIDDK | Diabetes, kidney, digestive | ~1,192 |
+| NINDS | Neurological disorders | ~1,088 |
+| NHLBI | Heart, lung, blood diseases | ~559 |
+
+**Medical NER (Named Entity Recognition):**
+Keyword/regex-based entity detection — no heavy model required, runs fully offline.
+
+| Category | Color | Examples |
+|----------|-------|---------|
+| Disease/Condition | 🔴 Red | leukemia, diabetes, alzheimer |
+| Symptom | 🟠 Orange | fever, headache, fatigue |
+| Treatment | 🟢 Green | chemotherapy, insulin, surgery |
+
+**Features:**
+- "Build Medical Knowledge Base" button — embeds 5,068 docs into a separate FAISS index
+- Real-time entity highlighting in the question text
+- Entity badges showing detected terms and their category
+- RAG answer sourced from NIH data
+- Source document attribution (expandable)
+- ⚠️ Medical safety disclaimer on every response
+
+**Sample Questions:**
+
+| Source | Question |
+|--------|----------|
+| CancerGov | *"What are the symptoms of leukemia?"* |
+| NINDS | *"How is Alzheimer's disease treated?"* |
+| NIDDK | *"What is diabetes?"* |
+| NHLBI | *"What causes emphysema?"* |
+| Multi-entity | *"What causes fever and headache in pneumonia?"* |
 
 ---
 
@@ -93,11 +140,15 @@ VADER was selected because it is purpose-built for short conversational text, ru
 ```
 customer_service_chatbot_LLM/
 ├── dataset/
-│   └── dataset.csv              # 76-row FAQ dataset
+│   ├── dataset.csv              # 76-row Nullclass FAQ dataset
+│   ├── medquad.csv              # 5,068-row medical Q&A dataset
+│   └── parse_medquad.py         # XML parser to regenerate medquad.csv
 ├── src/
-│   ├── main.py                  # Streamlit UI + analytics dashboard
-│   ├── langchain_helper.py      # RAG pipeline (FAISS + Gemini)
-│   └── sentiment_analyzer.py   # VADER sentiment detection
+│   ├── main.py                  # Streamlit UI (3 tabs: Chat, Medical Q&A, Analytics)
+│   ├── langchain_helper.py      # Customer service RAG pipeline
+│   ├── sentiment_analyzer.py    # VADER sentiment detection (Task 1)
+│   ├── medical_helper.py        # Medical RAG pipeline (Task 2)
+│   └── medical_ner.py           # Medical entity recognition (Task 2)
 ├── requirements.txt
 └── README.md
 ```
@@ -132,22 +183,20 @@ USE_TF=0 USE_JAX=0 streamlit run main.py
 
 ## Usage
 
-1. Click **"Create Knowledgebase"** on first run (builds FAISS index from CSV — ~10 seconds)
-2. Type a question in the input box
-3. See the sentiment badge + confidence score
-4. Read the tone-adapted answer
-5. Click 👍 or 👎 to rate the response
-6. Switch to the **📊 Analytics** tab to view sentiment trends
+### 💬 Chat Tab (Customer Service)
+1. Click **"Create Knowledgebase"** on first run (~10 seconds)
+2. Ask a question → see sentiment badge + tone-adapted answer
+3. Rate with 👍/👎 — satisfaction % updates live
 
-### Sample Questions
+### 🏥 Medical Q&A Tab
+1. Click **"Build Medical Knowledge Base"** on first run (~60 seconds)
+2. Ask a medical question → entities highlighted + NIH-sourced answer
+3. Expand **"Source documents"** to see retrieved passages
 
-| Sentiment | Question |
-|-----------|----------|
-| Negative | *"This is terrible, I can't find anything useful!"* |
-| Positive | *"I love this course, it's absolutely amazing!"* |
-| Neutral | *"Do you have a JavaScript course?"* |
-| Neutral | *"Should I learn Power BI or Tableau?"* |
-| Neutral | *"I've a MAC computer. Can I use Power BI on it?"* |
+### 📊 Analytics Tab
+- Sentiment distribution pie chart
+- Confidence score bar chart per query
+- Full query history table
 
 ---
 
@@ -156,6 +205,7 @@ USE_TF=0 USE_JAX=0 streamlit run main.py
 | Task | Feature | Status |
 |------|---------|--------|
 | Task 1 | Sentiment Analysis Integration | ✅ Complete |
+| Task 2 | Medical Q&A Chatbot (MedQuAD) | ✅ Complete |
 
 ---
 
@@ -167,6 +217,7 @@ USE_TF=0 USE_JAX=0 streamlit run main.py
 | Orchestration | LangChain |
 | Embeddings | sentence-transformers/all-MiniLM-L6-v2 |
 | Vector Store | FAISS |
-| Sentiment | NLTK VADER |
+| Sentiment Analysis | NLTK VADER |
+| Medical NER | Keyword/regex dictionary |
 | UI | Streamlit |
 | Visualizations | Plotly |
