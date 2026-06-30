@@ -5,6 +5,8 @@ from langchain_helper import get_qa_chain, create_vector_db
 from sentiment_analyzer import analyze_sentiment
 from medical_ner import extract_entities, highlight_entities, CATEGORY_COLORS
 from medical_helper import get_medical_qa_chain, create_medical_vector_db
+import knowledge_expander
+import kb_scheduler
 
 st.set_page_config(page_title="Customer Service Chatbot", layout="wide")
 st.title("CUSTOMER SERVICE CHATBOT 🤖")
@@ -16,7 +18,9 @@ if "history" not in st.session_state:
     st.session_state.history = []
 
 # --- Tabs ---
-tab_chat, tab_medical, tab_analytics = st.tabs(["💬 Chat", "🏥 Medical Q&A", "📊 Analytics"])
+tab_chat, tab_medical, tab_update, tab_analytics = st.tabs(
+    ["💬 Chat", "🏥 Medical Q&A", "🔄 Auto-Update", "📊 Analytics"]
+)
 
 # ── CHAT TAB ──────────────────────────────────────────────────────────────────
 with tab_chat:
@@ -161,6 +165,106 @@ with tab_medical:
             "from NIH public databases. Always consult a qualified healthcare provider for personal "
             "medical advice, diagnosis, or treatment."
         )
+
+# ── AUTO-UPDATE TAB ───────────────────────────────────────────────────────────
+with tab_update:
+    st.subheader("Dynamic Knowledge Base Expansion")
+    st.caption("Add new sources to either knowledge base — manually or on a recurring schedule.")
+
+    kb_choice_options = list(knowledge_expander.KB_PATHS.keys())
+
+    col_size1, col_size2 = st.columns(2)
+    for col, kb in zip([col_size1, col_size2], kb_choice_options):
+        with col:
+            count = knowledge_expander.get_index_doc_count(kb)
+            st.metric(f"{kb} — vectors", count)
+
+    st.divider()
+
+    # --- Add a URL source ---
+    st.markdown("**Add a URL Source**")
+    with st.form("add_url_form"):
+        url_kb = st.selectbox("Target knowledge base", kb_choice_options, key="url_kb")
+        url_input = st.text_input("URL to ingest", placeholder="https://example.com/article")
+        col_a, col_b = st.columns(2)
+        submit_register = col_a.form_submit_button("Register for periodic refresh")
+        submit_once = col_b.form_submit_button("Ingest once now")
+
+        if submit_register and url_input:
+            kb_scheduler.add_source(url_kb, url_input)
+            st.success(f"Registered {url_input} for periodic refresh on {url_kb}.")
+
+        if submit_once and url_input:
+            with st.spinner("Fetching and embedding..."):
+                result = knowledge_expander.ingest_url(url_kb, url_input)
+            if result["status"] == "added":
+                st.success(f"Added {result['chunks_added']} chunks to {url_kb}.")
+            else:
+                st.info("Skipped — this content was already ingested (no changes detected).")
+
+    # --- Add manual Q&A ---
+    st.markdown("**Add a Manual Q&A Entry**")
+    with st.form("add_manual_form"):
+        manual_kb = st.selectbox("Target knowledge base", kb_choice_options, key="manual_kb")
+        manual_prompt = st.text_input("Question / prompt")
+        manual_response = st.text_area("Answer / response")
+        submit_manual = st.form_submit_button("Add to knowledge base")
+
+        if submit_manual and manual_prompt and manual_response:
+            with st.spinner("Embedding..."):
+                result = knowledge_expander.ingest_manual_text(manual_kb, manual_prompt, manual_response)
+            if result["status"] == "added":
+                st.success(f"Added to {manual_kb}.")
+            else:
+                st.info("Skipped — identical entry already exists.")
+
+    st.divider()
+
+    # --- Periodic refresh controls ---
+    st.markdown("**Periodic Auto-Refresh**")
+    registered = kb_scheduler.get_sources()
+
+    if registered:
+        st.dataframe(pd.DataFrame(registered), use_container_width=True, hide_index=True)
+    else:
+        st.caption("No sources registered yet. Add one above with 'Register for periodic refresh'.")
+
+    col_c, col_d, col_e = st.columns([1, 1, 2])
+    with col_c:
+        interval = st.number_input("Interval (minutes)", min_value=1, max_value=1440, value=60)
+    with col_d:
+        if not kb_scheduler.is_running():
+            if st.button("▶ Start auto-refresh"):
+                kb_scheduler.start_scheduler(interval_minutes=interval)
+                st.rerun()
+        else:
+            if st.button("⏹ Stop auto-refresh"):
+                kb_scheduler.stop_scheduler()
+                st.rerun()
+    with col_e:
+        status = "🟢 Running" if kb_scheduler.is_running() else "⚪ Stopped"
+        st.caption(f"Scheduler status: {status}")
+
+    if st.button("Run refresh now (all registered sources)"):
+        with st.spinner("Refreshing all registered sources..."):
+            results = kb_scheduler.run_now()
+        for r in results:
+            if r["status"] == "added":
+                st.success(f"{r['url']} → +{r['chunks_added']} chunks ({r['kb']})")
+            elif r["status"] == "skipped":
+                st.info(f"{r['url']} → no changes ({r['kb']})")
+            else:
+                st.error(f"{r['url']} → error: {r.get('reason')}")
+
+    st.divider()
+
+    # --- Ingestion history ---
+    st.markdown("**Ingestion History**")
+    history = knowledge_expander.get_ingestion_history()
+    if history:
+        st.dataframe(pd.DataFrame(history), use_container_width=True, hide_index=True)
+    else:
+        st.caption("No ingestion history yet.")
 
 # ── ANALYTICS TAB ─────────────────────────────────────────────────────────────
 with tab_analytics:

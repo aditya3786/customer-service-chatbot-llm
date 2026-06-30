@@ -12,6 +12,10 @@ src/medical_faiss_index/
 # Raw MedQuAD repo (nested git repo — too large, use parse_medquad.py to regenerate)
 dataset/MedQuAD/
 
+# Dynamic knowledge base runtime state (regenerated at runtime, user-specific)
+src/ingestion_log.json
+src/sources_config.json
+
 # macOS
 .DS_Store
 

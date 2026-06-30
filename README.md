@@ -1,6 +1,6 @@
-# Customer Service Chatbot with Sentiment Analysis & Medical Q&A
+# Customer Service Chatbot with Sentiment Analysis, Medical Q&A & Dynamic Knowledge Updates
 
-An end-to-end LLM-powered chatbot built with **Google Gemini**, **LangChain**, and **Streamlit** as part of the ElevanceSkills internship. Extends the training project with two internship tasks: sentiment-aware customer service and a medical Q&A system.
+An end-to-end LLM-powered chatbot built with **Google Gemini**, **LangChain**, and **Streamlit** as part of the ElevanceSkills internship. Extends the training project with three internship tasks: sentiment-aware customer service, a medical Q&A system, and dynamic knowledge base expansion.
 
 ---
 
@@ -135,6 +135,39 @@ Keyword/regex-based entity detection — no heavy model required, runs fully off
 
 ---
 
+## Task 3 — Dynamic Knowledge Base Expansion
+
+**Objective:** Build a mechanism to periodically update the vector database with new information from specified sources, so the chatbot incorporates new knowledge over time.
+
+**Incremental FAISS updates:** Rather than rebuilding the entire index, new content is merged into the existing FAISS index via `add_documents()` — fast and non-destructive to existing data.
+
+**Sources supported:**
+| Source | How it works |
+|--------|-------------|
+| URL | Fetches the page with `requests`, strips nav/script/style tags with `BeautifulSoup`, extracts clean text |
+| Manual Q&A | Prompt/response pair typed directly into the UI |
+
+**Dedup via content hashing:** Every ingested text is SHA-256 hashed. Re-ingesting unchanged content is skipped. If a source's content *changes* (e.g. a webpage is updated), the new hash differs and the fresh content is ingested — this is what makes updates dynamic rather than a one-time import.
+
+**Periodic refresh:** `APScheduler` runs a background job on a configurable interval (default 60 min) that re-checks all registered URL sources and re-ingests anything that changed. Sources are persisted to `src/sources_config.json` so registrations survive app restarts.
+
+**Generic across both knowledge bases:** The same mechanism updates either the Customer Service FAQ index or the Medical Q&A index — selectable per source.
+
+**Features:**
+- Live vector count per knowledge base
+- "Ingest once now" for immediate one-off additions
+- "Register for periodic refresh" for recurring sources
+- Configurable refresh interval + start/stop scheduler control
+- Full ingestion history table (source, target KB, timestamp, chunks added)
+
+**Example flow:**
+1. Register `https://example.com/new-course-faq` → target: Customer Service
+2. Click "Run refresh now" → page is fetched, chunked, embedded, merged into `faiss_index`
+3. Ask a question covering that new content in the Chat tab → answer reflects the newly added information
+4. Update the source page later → next scheduled refresh detects the hash change and re-ingests automatically
+
+---
+
 ## Project Structure
 
 ```
@@ -144,11 +177,13 @@ customer_service_chatbot_LLM/
 │   ├── medquad.csv              # 5,068-row medical Q&A dataset
 │   └── parse_medquad.py         # XML parser to regenerate medquad.csv
 ├── src/
-│   ├── main.py                  # Streamlit UI (3 tabs: Chat, Medical Q&A, Analytics)
+│   ├── main.py                  # Streamlit UI (4 tabs: Chat, Medical Q&A, Auto-Update, Analytics)
 │   ├── langchain_helper.py      # Customer service RAG pipeline
 │   ├── sentiment_analyzer.py    # VADER sentiment detection (Task 1)
 │   ├── medical_helper.py        # Medical RAG pipeline (Task 2)
-│   └── medical_ner.py           # Medical entity recognition (Task 2)
+│   ├── medical_ner.py           # Medical entity recognition (Task 2)
+│   ├── knowledge_expander.py    # Ingestion + dedup + incremental FAISS updates (Task 3)
+│   └── kb_scheduler.py          # Periodic background refresh scheduler (Task 3)
 ├── requirements.txt
 └── README.md
 ```
@@ -193,6 +228,12 @@ USE_TF=0 USE_JAX=0 streamlit run main.py
 2. Ask a medical question → entities highlighted + NIH-sourced answer
 3. Expand **"Source documents"** to see retrieved passages
 
+### 🔄 Auto-Update Tab
+1. Add a URL or manual Q&A entry, choose the target knowledge base
+2. "Ingest once now" for an immediate one-off update, or "Register for periodic refresh" for recurring sources
+3. Start the scheduler to auto-refresh registered sources on an interval
+4. View live vector counts and full ingestion history
+
 ### 📊 Analytics Tab
 - Sentiment distribution pie chart
 - Confidence score bar chart per query
@@ -206,6 +247,7 @@ USE_TF=0 USE_JAX=0 streamlit run main.py
 |------|---------|--------|
 | Task 1 | Sentiment Analysis Integration | ✅ Complete |
 | Task 2 | Medical Q&A Chatbot (MedQuAD) | ✅ Complete |
+| Task 3 | Dynamic Knowledge Base Expansion | ✅ Complete |
 
 ---
 
@@ -219,5 +261,7 @@ USE_TF=0 USE_JAX=0 streamlit run main.py
 | Vector Store | FAISS |
 | Sentiment Analysis | NLTK VADER |
 | Medical NER | Keyword/regex dictionary |
+| Scheduling | APScheduler |
+| Web scraping | Requests + BeautifulSoup |
 | UI | Streamlit |
 | Visualizations | Plotly |

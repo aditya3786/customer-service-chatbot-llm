@@ -8,3 +8,5 @@ faiss-cpu
 nltk
 plotly
 pandas
+apscheduler
+beautifulsoup4
