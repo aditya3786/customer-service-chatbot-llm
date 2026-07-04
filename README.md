@@ -135,6 +135,51 @@ Keyword/regex-based entity detection — no heavy model required, runs fully off
 
 ---
 
+## Task 4 — arXiv Research Assistant (Domain Expert Chatbot)
+
+**Objective:** Build a domain-expert chatbot on CS research papers with advanced NLP (information extraction, summarization), an open-source LLM, paper searching, concept visualization, and follow-up question support.
+
+**Dataset:** 2,475 recent CS papers fetched from arXiv.org via API (`dataset/fetch_arxiv.py`), covering:
+
+| Category | Description |
+|----------|-------------|
+| cs.AI | Artificial intelligence |
+| cs.LG | Machine learning |
+| cs.CL | Computational linguistics / NLP |
+| cs.CV | Computer vision |
+| cs.NE | Neural and evolutionary computing |
+
+**Open-source LLM — DistilBART:** HuggingFace `sshleifer/distilbart-cnn-12-6` (~300MB, CPU-friendly, fully offline) used for abstractive paper summarization. Satisfies the "open-source LLM" requirement — no API quota, runs locally.
+
+**RAG with conversation memory:** `ConversationalRetrievalChain` (LangChain) + `ConversationBufferMemory` preserves context across follow-up questions in the same session. Each question is conditioned on prior Q&A history.
+
+**CS NER:** Same keyword/regex pattern as medical NER. Four categories:
+| Category | Color | Examples |
+|----------|-------|---------|
+| Algorithm/Model | 🔵 Blue | BERT, transformer, GAN, diffusion |
+| Dataset | 🟢 Green | ImageNet, SQuAD, COCO, GLUE |
+| Task | 🟡 Yellow | classification, detection, translation |
+| Framework | 🔴 Pink | PyTorch, TensorFlow, HuggingFace |
+
+**Features:**
+- Semantic paper search (FAISS, 8,278 indexed chunks)
+- Per-paper abstractive summarization via DistilBART
+- CS entity highlighting in abstracts (Algorithm/Model/Dataset/Task/Framework)
+- Research Q&A with multi-turn conversation memory
+- 3 Plotly concept visualizations: category distribution, year histogram, top-25 keywords
+- Direct arXiv links per paper
+
+**Sample Questions:**
+
+| Question | Expected |
+|----------|---------|
+| *"What is a diffusion model?"* | Answer citing recent diffusion papers |
+| *"How do large language models reason?"* | Sources from cs.AI/cs.CL papers |
+| *"Explain vision transformers"* | ViT-related papers cited |
+| *"How does this compare to CNNs?"* | Follow-up using prior context |
+
+---
+
 ## Task 3 — Dynamic Knowledge Base Expansion
 
 **Objective:** Build a mechanism to periodically update the vector database with new information from specified sources, so the chatbot incorporates new knowledge over time.
@@ -175,15 +220,20 @@ customer_service_chatbot_LLM/
 ├── dataset/
 │   ├── dataset.csv              # 76-row Nullclass FAQ dataset
 │   ├── medquad.csv              # 5,068-row medical Q&A dataset
-│   └── parse_medquad.py         # XML parser to regenerate medquad.csv
+│   ├── parse_medquad.py         # XML parser to regenerate medquad.csv
+│   ├── arxiv_cs_sample.csv      # 2,475-row arXiv CS papers dataset
+│   └── fetch_arxiv.py           # arXiv API fetcher to regenerate arxiv_cs_sample.csv
 ├── src/
-│   ├── main.py                  # Streamlit UI (4 tabs: Chat, Medical Q&A, Auto-Update, Analytics)
+│   ├── main.py                  # Streamlit UI (5 tabs: Chat, Medical Q&A, Auto-Update, Research, Analytics)
 │   ├── langchain_helper.py      # Customer service RAG pipeline
 │   ├── sentiment_analyzer.py    # VADER sentiment detection (Task 1)
 │   ├── medical_helper.py        # Medical RAG pipeline (Task 2)
 │   ├── medical_ner.py           # Medical entity recognition (Task 2)
 │   ├── knowledge_expander.py    # Ingestion + dedup + incremental FAISS updates (Task 3)
-│   └── kb_scheduler.py          # Periodic background refresh scheduler (Task 3)
+│   ├── kb_scheduler.py          # Periodic background refresh scheduler (Task 3)
+│   ├── arxiv_helper.py          # arXiv RAG pipeline with conversation memory (Task 4)
+│   ├── cs_ner.py                # CS domain entity recognition (Task 4)
+│   └── summarizer.py            # DistilBART abstractive summarization (Task 4)
 ├── requirements.txt
 └── README.md
 ```
@@ -234,6 +284,14 @@ USE_TF=0 USE_JAX=0 streamlit run main.py
 3. Start the scheduler to auto-refresh registered sources on an interval
 4. View live vector counts and full ingestion history
 
+### 🔬 Research Tab (arXiv)
+1. Click **"Build Research Knowledge Base"** on first run (~60–90 seconds)
+2. Enter a semantic query → see top-5 relevant papers with CS entity highlights
+3. Click **"📄 Summarize"** on any paper → DistilBART generates a concise summary
+4. Ask a research question in the Q&A section → Gemini answers citing paper titles
+5. Ask follow-up questions — conversation context is preserved in the session
+6. Scroll down for concept visualization charts (category distribution, year histogram, keywords)
+
 ### 📊 Analytics Tab
 - Sentiment distribution pie chart
 - Confidence score bar chart per query
@@ -248,6 +306,7 @@ USE_TF=0 USE_JAX=0 streamlit run main.py
 | Task 1 | Sentiment Analysis Integration | ✅ Complete |
 | Task 2 | Medical Q&A Chatbot (MedQuAD) | ✅ Complete |
 | Task 3 | Dynamic Knowledge Base Expansion | ✅ Complete |
+| Task 4 | arXiv Research Assistant (Domain Expert Chatbot) | ✅ Complete |
 
 ---
 
@@ -263,5 +322,8 @@ USE_TF=0 USE_JAX=0 streamlit run main.py
 | Medical NER | Keyword/regex dictionary |
 | Scheduling | APScheduler |
 | Web scraping | Requests + BeautifulSoup |
+| Paper summarization | DistilBART (sshleifer/distilbart-cnn-12-6) |
+| Conversation memory | LangChain ConversationalRetrievalChain |
+| arXiv data fetch | arxiv Python library |
 | UI | Streamlit |
 | Visualizations | Plotly |

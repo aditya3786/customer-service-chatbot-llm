@@ -10,3 +10,5 @@ plotly
 pandas
 apscheduler
 beautifulsoup4
+arxiv
+transformers

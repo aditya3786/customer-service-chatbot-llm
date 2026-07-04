@@ -7,6 +7,9 @@ from medical_ner import extract_entities, highlight_entities, CATEGORY_COLORS
 from medical_helper import get_medical_qa_chain, create_medical_vector_db
 import knowledge_expander
 import kb_scheduler
+from arxiv_helper import create_arxiv_vector_db, search_papers, get_arxiv_qa_chain, ARXIV_VECTORDB_PATH
+from cs_ner import extract_cs_entities, highlight_cs_entities, CATEGORY_COLORS as CS_COLORS
+from summarizer import get_summary
 
 st.set_page_config(page_title="Customer Service Chatbot", layout="wide")
 st.title("CUSTOMER SERVICE CHATBOT 🤖")
@@ -16,10 +19,14 @@ if "feedback" not in st.session_state:
     st.session_state.feedback = {"positive": 0, "negative": 0}
 if "history" not in st.session_state:
     st.session_state.history = []
+if "arxiv_chat_history" not in st.session_state:
+    st.session_state.arxiv_chat_history = []
+if "arxiv_qa_history" not in st.session_state:
+    st.session_state.arxiv_qa_history = []
 
 # --- Tabs ---
-tab_chat, tab_medical, tab_update, tab_analytics = st.tabs(
-    ["💬 Chat", "🏥 Medical Q&A", "🔄 Auto-Update", "📊 Analytics"]
+tab_chat, tab_medical, tab_update, tab_research, tab_analytics = st.tabs(
+    ["💬 Chat", "🏥 Medical Q&A", "🔄 Auto-Update", "🔬 Research", "📊 Analytics"]
 )
 
 # ── CHAT TAB ──────────────────────────────────────────────────────────────────
@@ -265,6 +272,223 @@ with tab_update:
         st.dataframe(pd.DataFrame(history), use_container_width=True, hide_index=True)
     else:
         st.caption("No ingestion history yet.")
+
+# ── RESEARCH TAB ──────────────────────────────────────────────────────────────
+import os as _os
+with tab_research:
+    st.subheader("🔬 arXiv Research Assistant")
+    st.caption("Domain expert chatbot on ~3,000 CS papers (AI, ML, NLP, CV, NE) from arXiv.org")
+
+    # ── Knowledge base setup ────────────────────────────────────────────────────
+    _arxiv_ready = _os.path.exists(ARXIV_VECTORDB_PATH)
+    col_rb1, col_rb2 = st.columns([3, 1])
+    with col_rb1:
+        if st.button("Build Research Knowledge Base"):
+            _csv_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "dataset", "arxiv_cs_sample.csv")
+            if not _os.path.exists(_csv_path):
+                st.error("Dataset not found. Run `python dataset/fetch_arxiv.py` first to download papers.")
+            else:
+                with st.spinner("Embedding arXiv papers... (this may take ~90s the first time)"):
+                    _n = create_arxiv_vector_db()
+                st.success(f"Research knowledge base ready! ({_n} chunks indexed)")
+                st.rerun()
+    with col_rb2:
+        if _arxiv_ready:
+            st.success("KB: Ready ✅")
+        else:
+            st.warning("KB: Not built")
+
+    if not _arxiv_ready:
+        st.info("Click **'Build Research Knowledge Base'** to get started. The dataset CSV must exist at `dataset/arxiv_cs_sample.csv`.")
+        st.stop()
+
+    st.divider()
+
+    # ── Paper Search ────────────────────────────────────────────────────────────
+    st.markdown("### 🔍 Paper Search")
+    st.caption("Semantic search over paper titles and abstracts")
+
+    _search_query = st.text_input(
+        "Search for papers:",
+        placeholder="e.g. attention mechanism in transformers",
+        key="arxiv_search",
+    )
+
+    if _search_query:
+        with st.spinner("Searching..."):
+            _results = search_papers(_search_query, k=5)
+
+        if not _results:
+            st.info("No relevant papers found. Try a different query.")
+        else:
+            st.markdown(f"**Top {len(_results)} results:**")
+            for _idx, (_doc, _score) in enumerate(_results):
+                _meta = _doc.metadata
+                _paper_key = _meta.get("arxiv_id", str(_idx))
+                with st.container(border=True):
+                    _col_title, _col_score = st.columns([5, 1])
+                    with _col_title:
+                        st.markdown(f"**{_meta.get('title', 'Untitled')}**")
+                    with _col_score:
+                        st.caption(f"Score: {_score:.2f}")
+
+                    st.caption(
+                        f"👤 {_meta.get('authors', 'N/A')} &nbsp;|&nbsp; "
+                        f"📅 {_meta.get('year', 'N/A')} &nbsp;|&nbsp; "
+                        f"🏷️ {_meta.get('categories', '')}"
+                    )
+
+                    _abstract_text = _doc.page_content
+                    _cs_entities = extract_cs_entities(_abstract_text)
+                    if _cs_entities:
+                        _highlighted = highlight_cs_entities(_abstract_text[:600], _cs_entities[:8])
+                        st.markdown(
+                            f"<p style='font-size:0.9em;color:#444'>{_highlighted}…</p>",
+                            unsafe_allow_html=True,
+                        )
+                        # NER legend
+                        st.markdown(
+                            '<span style="font-size:0.75em">'
+                            + " &nbsp; ".join(
+                                f'<mark style="background:{CS_COLORS[c]};padding:1px 5px;border-radius:3px">{c}</mark>'
+                                for c in CS_COLORS
+                            )
+                            + "</span>",
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        st.caption(_abstract_text[:400] + "…")
+
+                    _sum_state_key = f"arxiv_summary_{_paper_key}"
+                    if st.button("📄 Summarize (open-source DistilBART)", key=f"sum_btn_{_paper_key}_{_idx}"):
+                        with st.spinner("Summarizing with DistilBART (open-source LLM)..."):
+                            st.session_state[_sum_state_key] = get_summary(_abstract_text)
+                    if _sum_state_key in st.session_state:
+                        st.info(f"**DistilBART Summary:** {st.session_state[_sum_state_key]}")
+
+                    if _meta.get("url"):
+                        st.markdown(f"[📎 View on arXiv]({_meta['url']})")
+
+    st.divider()
+
+    # ── Research Q&A ────────────────────────────────────────────────────────────
+    st.markdown("### 💬 Research Q&A")
+    st.caption("Ask complex questions — follow-up context is remembered within this session")
+
+    _arxiv_question = st.text_input(
+        "Ask a research question:",
+        placeholder="e.g. What is BERT and how does it work?",
+        key="arxiv_qa",
+    )
+
+    _col_qa1, _col_qa2 = st.columns([4, 1])
+    with _col_qa2:
+        if st.button("🗑 Clear conversation"):
+            st.session_state.arxiv_chat_history = []
+            st.session_state.arxiv_qa_history = []
+            st.rerun()
+
+    if _arxiv_question:
+        with st.spinner("Searching papers and generating answer..."):
+            try:
+                _chain = get_arxiv_qa_chain()
+                _response = _chain({
+                    "question": _arxiv_question,
+                    "chat_history": st.session_state.arxiv_chat_history,
+                })
+                _answer = _response.get("answer", _response.get("result", "No answer found."))
+                _sources = _response.get("source_documents", [])
+            except Exception as _e:
+                _answer = f"Error: {_e}"
+                _sources = []
+
+        st.session_state.arxiv_chat_history.append((_arxiv_question, _answer))
+        st.session_state.arxiv_qa_history.append({
+            "question": _arxiv_question,
+            "answer": _answer,
+            "sources": [s.metadata.get("title", "") for s in _sources[:3]],
+        })
+
+        st.markdown("**Answer:**")
+        st.write(_answer)
+
+        if _sources:
+            with st.expander("📄 Source papers"):
+                for _s in _sources[:4]:
+                    _sm = _s.metadata
+                    st.markdown(
+                        f"- **{_sm.get('title', 'Untitled')}** "
+                        f"({_sm.get('year', '')}) — {_sm.get('authors', '')}"
+                    )
+
+    # Show last 3 conversation exchanges
+    if st.session_state.arxiv_qa_history:
+        st.markdown("**Recent conversation:**")
+        for _item in reversed(st.session_state.arxiv_qa_history[-3:]):
+            with st.expander(f"Q: {_item['question'][:80]}…"):
+                st.write(_item["answer"])
+                if _item["sources"]:
+                    st.caption("Sources: " + " | ".join(filter(None, _item["sources"])))
+
+    st.divider()
+
+    # ── Concept Visualization ────────────────────────────────────────────────────
+    st.markdown("### 📊 Concept Visualization")
+    _csv_viz_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "dataset", "arxiv_cs_sample.csv")
+    if not _os.path.exists(_csv_viz_path):
+        st.caption("Run `python dataset/fetch_arxiv.py` to generate the dataset for visualizations.")
+    else:
+        @st.cache_data
+        def _load_arxiv_df():
+            return pd.read_csv(_csv_viz_path)
+
+        _df = _load_arxiv_df()
+
+        _col_v1, _col_v2 = st.columns(2)
+
+        with _col_v1:
+            st.markdown("**CS Subcategory Distribution**")
+            _all_cats = []
+            for _cat_str in _df["categories"].dropna():
+                _all_cats.extend([c.strip() for c in _cat_str.split(",") if c.strip().startswith("cs.")])
+            _cat_counts = pd.Series(_all_cats).value_counts().head(12).reset_index()
+            _cat_counts.columns = ["Category", "Count"]
+            _fig_cat = px.bar(_cat_counts, x="Count", y="Category", orientation="h",
+                              color="Count", color_continuous_scale="Blues")
+            _fig_cat.update_layout(showlegend=False, margin=dict(t=10, b=10), yaxis={"categoryorder": "total ascending"})
+            st.plotly_chart(_fig_cat, use_container_width=True)
+
+        with _col_v2:
+            st.markdown("**Papers by Year**")
+            _year_counts = _df["year"].value_counts().sort_index().reset_index()
+            _year_counts.columns = ["Year", "Count"]
+            _fig_year = px.bar(_year_counts, x="Year", y="Count",
+                               color="Count", color_continuous_scale="Teal")
+            _fig_year.update_layout(showlegend=False, margin=dict(t=10, b=10))
+            st.plotly_chart(_fig_year, use_container_width=True)
+
+        st.markdown("**Top 25 Abstract Keywords**")
+        _STOPWORDS = {
+            "the", "a", "an", "in", "of", "to", "and", "for", "is", "are", "that",
+            "this", "with", "we", "our", "on", "by", "from", "as", "it", "be",
+            "at", "or", "can", "not", "which", "have", "has", "was", "their",
+            "also", "using", "show", "used", "based", "than", "more", "these",
+            "such", "been", "its", "into", "two", "new", "paper", "method",
+            "approach", "results", "proposed", "models", "model", "training",
+            "data", "tasks", "task", "work", "large", "both", "between", "each",
+        }
+        _words: list[str] = []
+        for _abstract in _df["abstract"].dropna():
+            _words.extend(
+                w.lower().strip(".,;:()[]\"'") for w in _abstract.split()
+                if len(w) > 3 and w.lower().strip(".,;:()[]\"'") not in _STOPWORDS
+            )
+        from collections import Counter
+        _top_words = pd.DataFrame(Counter(_words).most_common(25), columns=["Keyword", "Frequency"])
+        _fig_kw = px.bar(_top_words, x="Frequency", y="Keyword", orientation="h",
+                         color="Frequency", color_continuous_scale="Oranges")
+        _fig_kw.update_layout(showlegend=False, margin=dict(t=10, b=10), yaxis={"categoryorder": "total ascending"})
+        st.plotly_chart(_fig_kw, use_container_width=True)
 
 # ── ANALYTICS TAB ─────────────────────────────────────────────────────────────
 with tab_analytics:

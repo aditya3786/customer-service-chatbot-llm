@@ -8,6 +8,7 @@ __pycache__/
 # FAISS indexes (large binaries, regenerated at runtime)
 src/faiss_index/
 src/medical_faiss_index/
+src/arxiv_faiss_index/
 
 # Raw MedQuAD repo (nested git repo — too large, use parse_medquad.py to regenerate)
 dataset/MedQuAD/
