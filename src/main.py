@@ -10,6 +10,7 @@ import kb_scheduler
 from arxiv_helper import create_arxiv_vector_db, search_papers, get_arxiv_qa_chain, ARXIV_VECTORDB_PATH
 from cs_ner import extract_cs_entities, highlight_cs_entities, CATEGORY_COLORS as CS_COLORS
 from summarizer import get_summary
+from multimodal_assistant import run_pipeline
 
 st.set_page_config(page_title="Customer Service Chatbot", layout="wide")
 st.title("CUSTOMER SERVICE CHATBOT 🤖")
@@ -23,10 +24,12 @@ if "arxiv_chat_history" not in st.session_state:
     st.session_state.arxiv_chat_history = []
 if "arxiv_qa_history" not in st.session_state:
     st.session_state.arxiv_qa_history = []
+if "multimodal_history" not in st.session_state:
+    st.session_state.multimodal_history = []
 
 # --- Tabs ---
-tab_chat, tab_medical, tab_update, tab_research, tab_analytics = st.tabs(
-    ["💬 Chat", "🏥 Medical Q&A", "🔄 Auto-Update", "🔬 Research", "📊 Analytics"]
+tab_chat, tab_medical, tab_update, tab_research, tab_multimodal, tab_analytics = st.tabs(
+    ["💬 Chat", "🏥 Medical Q&A", "🔄 Auto-Update", "🔬 Research", "🖼️ Visual AI", "📊 Analytics"]
 )
 
 # ── CHAT TAB ──────────────────────────────────────────────────────────────────
@@ -489,6 +492,164 @@ with tab_research:
                          color="Frequency", color_continuous_scale="Oranges")
         _fig_kw.update_layout(showlegend=False, margin=dict(t=10, b=10), yaxis={"categoryorder": "total ascending"})
         st.plotly_chart(_fig_kw, use_container_width=True)
+
+# ── VISUAL AI TAB ─────────────────────────────────────────────────────────────
+with tab_multimodal:
+    st.subheader("🖼️ Visual AI — Multi-Modal Reasoning Assistant")
+    st.caption(
+        "Upload an image and ask a question. The assistant runs a 4-stage pipeline: "
+        "image analysis → ambiguity detection → evidence-labelled response → self-critique validation."
+    )
+
+    # Evidence label legend
+    st.markdown(
+        '<span style="font-size:0.8em">'
+        '<code>[seen in image]</code> directly observed &nbsp;·&nbsp; '
+        '<code>[inferred]</code> logically derived &nbsp;·&nbsp; '
+        '<code>[general knowledge]</code> background context'
+        '</span>',
+        unsafe_allow_html=True,
+    )
+    st.divider()
+
+    # ── Upload + question inputs ─────────────────────────────────────────────
+    _mm_col1, _mm_col2 = st.columns([1, 2])
+
+    with _mm_col1:
+        _uploaded = st.file_uploader(
+            "Upload an image",
+            type=["jpg", "jpeg", "png", "webp"],
+            key="mm_upload",
+            help="Supports JPEG, PNG, WebP",
+        )
+        if _uploaded:
+            st.image(_uploaded, use_container_width=True)
+            _mm_mime = f"image/{_uploaded.type.split('/')[-1].replace('jpg', 'jpeg')}"
+
+    with _mm_col2:
+        _mm_question = st.text_input(
+            "Your question about the image:",
+            placeholder="e.g. What is the main trend shown in this chart?",
+            key="mm_question",
+            help="Leave blank to run a pure image description.",
+        )
+        _mm_analyze = st.button(
+            "🔍 Analyze",
+            disabled=(_uploaded is None),
+            key="mm_analyze_btn",
+        )
+
+    # ── Run pipeline ─────────────────────────────────────────────────────────
+    if _mm_analyze and _uploaded is not None:
+        _image_bytes = _uploaded.read()
+
+        with st.status("Running 4-stage reasoning pipeline…", expanded=True) as _mm_status:
+            # Stage 1
+            st.write("🔍 Stage 1: Analyzing image structure and content…")
+            from multimodal_assistant import analyze_image, detect_ambiguity, generate_response, validate_response
+            import time as _time
+            _t0 = _time.time()
+            _img_analysis = analyze_image(_image_bytes, _mm_mime)
+            st.write(f"   ✔ Image analyzed ({_time.time()-_t0:.1f}s) — scene: **{_img_analysis.get('scene_type','?')}**, confidence: **{_img_analysis.get('confidence','?')}**")
+
+            # Stage 2
+            st.write("🤔 Stage 2: Checking question for ambiguity…")
+            _t0 = _time.time()
+            _effective_q = _mm_question.strip() or "Describe this image in detail."
+            _ambiguity = detect_ambiguity(_effective_q, _img_analysis)
+            _amb_label = "ambiguous" if _ambiguity.get("is_ambiguous") else "clear"
+            st.write(f"   ✔ Question is **{_amb_label}** ({_time.time()-_t0:.1f}s)")
+
+            # Stage 3
+            st.write("💬 Stage 3: Generating evidence-labelled response…")
+            _t0 = _time.time()
+            _mm_history = [(h["question"], h["final_answer"]) for h in st.session_state.multimodal_history]
+            _answer = generate_response(_effective_q, _img_analysis, _mm_history, _ambiguity.get("assumptions", []))
+            st.write(f"   ✔ Response generated ({_time.time()-_t0:.1f}s)")
+
+            # Stage 4
+            st.write("✅ Stage 4: Validating response accuracy…")
+            _t0 = _time.time()
+            _validation = validate_response(_effective_q, _img_analysis, _answer)
+            _conf = _validation.get("confidence", 0.7)
+            st.write(f"   ✔ Validation complete ({_time.time()-_t0:.1f}s) — confidence: **{_conf:.0%}**")
+
+            _mm_status.update(label="Pipeline complete ✅", state="complete")
+
+        _final_answer = _validation.get("corrected_answer") or _answer
+
+        # ── Image analysis detail ────────────────────────────────────────────
+        with st.expander("📊 Stage 1 — Image Analysis Details"):
+            _ia_col1, _ia_col2 = st.columns(2)
+            with _ia_col1:
+                st.markdown(f"**Scene type:** {_img_analysis.get('scene_type','')}")
+                st.markdown(f"**Confidence:** {_img_analysis.get('confidence','')}")
+                st.markdown(f"**Objects detected:** {', '.join(_img_analysis.get('objects', [])) or 'none'}")
+                st.markdown(f"**Dominant colors:** {', '.join(_img_analysis.get('colors', [])) or 'none'}")
+            with _ia_col2:
+                st.markdown(f"**Description:** {_img_analysis.get('description','')}")
+                if _img_analysis.get("text_content"):
+                    st.markdown(f"**Visible text (OCR):** {_img_analysis['text_content']}")
+                if _img_analysis.get("spatial_info"):
+                    st.markdown(f"**Spatial layout:** {_img_analysis['spatial_info']}")
+
+        # ── Ambiguity notice ─────────────────────────────────────────────────
+        if _ambiguity.get("is_ambiguous"):
+            st.warning(
+                f"⚠️ **Ambiguous question detected.** "
+                f"{_ambiguity.get('reasoning','')}\n\n"
+                + (f"**Clarifying question:** {_ambiguity['clarifying_question']}\n\n" if _ambiguity.get("clarifying_question") else "")
+                + (f"**Proceeding with assumptions:** {'; '.join(_ambiguity.get('assumptions', []))}" if _ambiguity.get("assumptions") else "")
+            )
+
+        # ── Answer ───────────────────────────────────────────────────────────
+        st.markdown("### Answer")
+        st.markdown(_final_answer)
+
+        # ── Validation badge ─────────────────────────────────────────────────
+        _v_col1, _v_col2, _v_col3 = st.columns([1, 1, 3])
+        with _v_col1:
+            _conf_color = "green" if _conf >= 0.75 else ("orange" if _conf >= 0.5 else "red")
+            st.badge(f"Confidence: {_conf:.0%}", color=_conf_color)
+        with _v_col2:
+            _valid_label = "✅ Valid" if _validation.get("is_valid") else "⚠️ Revised"
+            st.caption(_valid_label)
+
+        if _validation.get("caveats"):
+            with st.expander("⚠️ Stage 4 — Validation Caveats"):
+                for _cav in _validation["caveats"]:
+                    st.markdown(f"- {_cav}")
+
+        # ── Save to history ──────────────────────────────────────────────────
+        st.session_state.multimodal_history.append({
+            "question": _effective_q,
+            "image_description": _img_analysis.get("description", ""),
+            "scene_type": _img_analysis.get("scene_type", ""),
+            "answer": _answer,
+            "final_answer": _final_answer,
+            "confidence": _conf,
+            "is_valid": _validation.get("is_valid", True),
+        })
+
+    # ── Conversation history ─────────────────────────────────────────────────
+    if st.session_state.multimodal_history:
+        st.divider()
+        _mm_hist_col1, _mm_hist_col2 = st.columns([4, 1])
+        with _mm_hist_col1:
+            st.markdown("**Conversation history** (last 3 turns)")
+        with _mm_hist_col2:
+            if st.button("🗑 Clear history", key="mm_clear"):
+                st.session_state.multimodal_history = []
+                st.rerun()
+
+        for _turn in reversed(st.session_state.multimodal_history[-3:]):
+            with st.chat_message("user"):
+                st.markdown(f"**Q:** {_turn['question']}")
+                if _turn.get("scene_type"):
+                    st.caption(f"Image: {_turn['scene_type']}")
+            with st.chat_message("assistant"):
+                st.markdown(_turn["final_answer"][:600] + ("…" if len(_turn["final_answer"]) > 600 else ""))
+                st.caption(f"Confidence: {_turn['confidence']:.0%} {'✅' if _turn['is_valid'] else '⚠️ revised'}")
 
 # ── ANALYTICS TAB ─────────────────────────────────────────────────────────────
 with tab_analytics:
