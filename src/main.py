@@ -11,6 +11,7 @@ from arxiv_helper import create_arxiv_vector_db, search_papers, get_arxiv_qa_cha
 from cs_ner import extract_cs_entities, highlight_cs_entities, CATEGORY_COLORS as CS_COLORS
 from summarizer import get_summary
 from multimodal_assistant import run_pipeline
+from multilingual_assistant import run_multilingual_pipeline, SUPPORTED_LANGUAGES, get_lang_flag, get_lang_name
 
 st.set_page_config(page_title="Customer Service Chatbot", layout="wide")
 st.title("CUSTOMER SERVICE CHATBOT 🤖")
@@ -26,10 +27,12 @@ if "arxiv_qa_history" not in st.session_state:
     st.session_state.arxiv_qa_history = []
 if "multimodal_history" not in st.session_state:
     st.session_state.multimodal_history = []
+if "multilingual_history" not in st.session_state:
+    st.session_state.multilingual_history = []
 
 # --- Tabs ---
-tab_chat, tab_medical, tab_update, tab_research, tab_multimodal, tab_analytics = st.tabs(
-    ["💬 Chat", "🏥 Medical Q&A", "🔄 Auto-Update", "🔬 Research", "🖼️ Visual AI", "📊 Analytics"]
+tab_chat, tab_medical, tab_update, tab_research, tab_multimodal, tab_analytics, tab_multi = st.tabs(
+    ["💬 Chat", "🏥 Medical Q&A", "🔄 Auto-Update", "🔬 Research", "🖼️ Visual AI", "📊 Analytics", "🌐 Multilingual"]
 )
 
 # ── CHAT TAB ──────────────────────────────────────────────────────────────────
@@ -707,3 +710,130 @@ with tab_analytics:
         display_df = df[["query_num", "question", "sentiment", "compound"]].copy()
         display_df.columns = ["#", "Question", "Sentiment", "Compound Score"]
         st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+# ── MULTILINGUAL TAB ───────────────────────────────────────────────────────────
+with tab_multi:
+    st.subheader("🌐 Multilingual Conversation Assistant")
+    st.caption("Type in any language — the assistant auto-detects, switches context, and responds in your language.")
+
+    # Supported languages display
+    lang_chips = "  ".join(
+        f"{get_lang_flag(code)} **{name}**"
+        for code, name in list(SUPPORTED_LANGUAGES.items())[:9]
+    )
+    st.markdown(f"**Supported languages:** {lang_chips}")
+    st.divider()
+
+    _ml_question = st.text_input(
+        "Your message (any language):",
+        key="ml_question",
+        placeholder="e.g. Hola, ¿cómo estás? / Bonjour! / नमस्ते / Guten Tag",
+    )
+
+    if st.button("Send", key="ml_send") and _ml_question.strip():
+        with st.status("Processing multilingual query…", expanded=True) as _ml_status:
+            import time as _time
+
+            # Stage 1
+            st.write("🔍 Stage 1 — Detecting language…")
+            _ml_t0 = _time.time()
+            _ml_result = run_multilingual_pipeline(
+                _ml_question,
+                history=st.session_state.multilingual_history,
+            )
+            _ml_la = _ml_result["lang_analysis"]
+            _ml_ctx = _ml_result["context"]
+            _ml_resp = _ml_result["response_data"]
+            _ml_timings = _ml_result["stage_timings"]
+
+            st.write(
+                f"   ✅ Detected: {get_lang_flag(_ml_la['detected_lang'])} "
+                f"**{_ml_la['lang_name']}** "
+                f"(confidence {_ml_la['confidence']:.0%}) "
+                f"— {_ml_timings['stage1_language']}s"
+            )
+
+            st.write("🔗 Stage 2 — Resolving cross-lingual context…")
+            st.write(f"   ✅ Intent resolved — {_ml_timings['stage2_context']}s")
+
+            st.write("💬 Stage 3 — Generating response in {lang}…".format(
+                lang=_ml_la["lang_name"]
+            ))
+            st.write(f"   ✅ Response ready — {_ml_timings['stage3_response']}s")
+
+            _ml_status.update(label="Done ✓", state="complete", expanded=False)
+
+        # Language detection badge
+        _ml_badge_color = "green" if _ml_la["confidence"] >= 0.75 else "orange" if _ml_la["confidence"] >= 0.5 else "red"
+        st.badge(
+            f"{get_lang_flag(_ml_la['detected_lang'])} {_ml_la['lang_name']} — {_ml_la['confidence']:.0%}",
+            color=_ml_badge_color,
+        )
+
+        # Language switch warning
+        if _ml_la.get("is_switch"):
+            prior = get_lang_name(_ml_la.get("prior_lang", "?"))
+            st.warning(
+                f"🔄 **Language switch detected:** {prior} → {_ml_la['lang_name']}. "
+                "Prior context has been retained."
+            )
+
+        # Mixed-language notice
+        if _ml_la.get("is_mixed"):
+            segs = _ml_la.get("segments", [])
+            seg_langs = list({s["lang_code"] for s in segs})
+            lang_list = ", ".join(get_lang_name(c) for c in seg_langs)
+            st.info(f"🔀 **Mixed-language input detected:** {lang_list}")
+
+        # Ambiguity clarification
+        if _ml_ctx.get("is_ambiguous") and _ml_ctx.get("clarifying_question"):
+            st.warning(f"❓ **Clarification:** {_ml_ctx['clarifying_question']}")
+
+        st.divider()
+        st.markdown(_ml_result["final_response"])
+
+        # Cross-lingual notes expander
+        _ml_notes = _ml_resp.get("cross_lingual_notes")
+        if _ml_notes:
+            with st.expander("🔗 Cross-lingual reasoning notes"):
+                st.caption(_ml_notes)
+
+        # Resolved intent expander
+        with st.expander("🧠 Resolved intent (Stage 2)"):
+            st.caption(f"**Intent:** {_ml_ctx.get('resolved_intent', '—')}")
+            if _ml_ctx.get("context_used") and _ml_ctx["context_used"] != "none":
+                st.caption(f"**Context used:** {_ml_ctx['context_used']}")
+
+        # Append to session history
+        st.session_state.multilingual_history.append(_ml_result)
+
+    st.divider()
+
+    # Conversation history
+    if st.session_state.multilingual_history:
+        _ml_h_col1, _ml_h_col2 = st.columns([4, 1])
+        with _ml_h_col1:
+            st.markdown(f"**Conversation history** ({len(st.session_state.multilingual_history)} turns)")
+        with _ml_h_col2:
+            if st.button("🗑 Clear", key="ml_clear"):
+                st.session_state.multilingual_history = []
+                st.rerun()
+
+        for _ml_turn in reversed(st.session_state.multilingual_history[-5:]):
+            _ml_turn_lang = _ml_turn.get("detected_lang", "en")
+            _ml_turn_flag = get_lang_flag(_ml_turn_lang)
+            _ml_turn_name = get_lang_name(_ml_turn_lang)
+            with st.chat_message("user"):
+                st.markdown(_ml_turn.get("query", ""))
+                st.caption(f"{_ml_turn_flag} {_ml_turn_name}")
+            with st.chat_message("assistant"):
+                _ml_ans = _ml_turn.get("final_response", "")
+                st.markdown(_ml_ans[:600] + ("…" if len(_ml_ans) > 600 else ""))
+
+        # Language timeline expander
+        with st.expander("📅 Language timeline"):
+            for _i, _t in enumerate(st.session_state.multilingual_history, 1):
+                _code = _t.get("detected_lang", "?")
+                _sw = " ⬆ switch" if _t.get("lang_analysis", {}).get("is_switch") else ""
+                _mx = " 🔀 mixed" if _t.get("lang_analysis", {}).get("is_mixed") else ""
+                st.caption(f"Turn {_i}: {get_lang_flag(_code)} {get_lang_name(_code)}{_sw}{_mx}")

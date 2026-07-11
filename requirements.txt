@@ -13,3 +13,4 @@ beautifulsoup4
 arxiv
 transformers
 Pillow
+langdetect
