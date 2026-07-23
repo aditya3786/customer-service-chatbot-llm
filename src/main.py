@@ -13,8 +13,141 @@ from summarizer import get_summary
 from multimodal_assistant import run_pipeline
 from multilingual_assistant import run_multilingual_pipeline, SUPPORTED_LANGUAGES, get_lang_flag, get_lang_name
 
-st.set_page_config(page_title="Customer Service Chatbot", layout="wide")
-st.title("CUSTOMER SERVICE CHATBOT 🤖")
+st.set_page_config(
+    page_title="AI Assistant Suite",
+    page_icon="🤖",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+# ── Global CSS ─────────────────────────────────────────────────────────────────
+st.markdown("""
+<style>
+/* ── Hero header ── */
+.hero-header {
+    background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 45%, #0891b2 100%);
+    padding: 1.6rem 2rem;
+    border-radius: 14px;
+    margin-bottom: 1.2rem;
+    color: white;
+    box-shadow: 0 4px 20px rgba(37,99,235,0.25);
+}
+.hero-header h1 { margin: 0; font-size: 1.9rem; font-weight: 800; letter-spacing: -0.5px; }
+.hero-header p  { margin: 0.3rem 0 0; font-size: 0.9rem; opacity: 0.85; }
+
+/* ── Metric cards ── */
+[data-testid="stMetric"] {
+    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+    border-radius: 12px;
+    padding: 0.6rem 1rem;
+    border-left: 4px solid #2563eb;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+[data-testid="stMetric"] label { font-size: 0.75rem !important; font-weight: 700 !important; color: #64748b !important; text-transform: uppercase; letter-spacing: 0.05em; }
+[data-testid="stMetric"] [data-testid="stMetricValue"] { font-size: 1.6rem !important; font-weight: 800 !important; color: #1e3a8a !important; }
+
+/* ── Buttons ── */
+.stButton > button {
+    border-radius: 22px !important;
+    font-weight: 600 !important;
+    transition: all 0.2s ease !important;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08) !important;
+}
+.stButton > button:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(37,99,235,0.22) !important; }
+
+/* ── Tab labels ── */
+.stTabs [data-baseweb="tab"] { font-weight: 600; font-size: 0.88rem; }
+.stTabs [aria-selected="true"] { color: #2563eb !important; }
+
+/* ── Alert boxes ── */
+.stAlert { border-radius: 10px !important; }
+
+/* ── Chat bubbles ── */
+.stChatMessage { border-radius: 14px !important; margin-bottom: 0.4rem !important; }
+
+/* ── Containers ── */
+[data-testid="stVerticalBlockBorderWrapper"] { border-radius: 12px !important; }
+
+/* ── Divider colour ── */
+hr { border-color: #e2e8f0 !important; }
+
+/* ── Sidebar branding ── */
+.sidebar-brand {
+    background: linear-gradient(135deg, #1e3a8a, #2563eb);
+    border-radius: 12px;
+    padding: 1rem 1.2rem;
+    color: white;
+    text-align: center;
+    margin-bottom: 1rem;
+}
+.sidebar-brand h2 { margin: 0; font-size: 1.15rem; font-weight: 800; }
+.sidebar-brand p  { margin: 0.25rem 0 0; font-size: 0.75rem; opacity: 0.8; }
+
+/* ── Section headers ── */
+.section-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0.8rem 0 0.4rem;
+    font-weight: 700;
+    font-size: 1.05rem;
+    color: #1e3a8a;
+    border-bottom: 2px solid #e2e8f0;
+    padding-bottom: 0.35rem;
+}
+
+/* ── Tag pills ── */
+.lang-pill {
+    display: inline-block;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    color: #1d4ed8;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    margin: 2px;
+}
+
+/* ── Expanders ── */
+.streamlit-expanderHeader { font-weight: 600 !important; }
+</style>
+""", unsafe_allow_html=True)
+
+# ── Hero header ───────────────────────────────────────────────────────────────
+st.markdown("""
+<div class="hero-header">
+  <h1>🤖 AI Assistant Suite</h1>
+  <p>Customer Service · Medical Q&amp;A · Knowledge Base · Research · Visual AI · Analytics · Multilingual</p>
+</div>
+""", unsafe_allow_html=True)
+
+# ── Sidebar ───────────────────────────────────────────────────────────────────
+with st.sidebar:
+    st.markdown("""
+    <div class="sidebar-brand">
+      <h2>🤖 AI Suite</h2>
+      <p>Powered by Gemini 2.5 Flash</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("**Session Stats**")
+    _sb_col1, _sb_col2 = st.columns(2)
+    _sb_col1.metric("Queries", len(st.session_state.get("history", [])))
+    _sb_col2.metric("Languages", len(st.session_state.get("multilingual_history", [])))
+
+    _sb_fb = st.session_state.get("feedback", {"positive": 0, "negative": 0})
+    _sb_total = _sb_fb["positive"] + _sb_fb["negative"]
+    _sb_sat = f"{round(_sb_fb['positive'] / _sb_total * 100)}%" if _sb_total else "—"
+    st.metric("Satisfaction", _sb_sat)
+
+    st.divider()
+    st.caption("**Active modules**")
+    for _mod in ["💬 Chat (Task 1)", "🏥 Medical Q&A (Task 2)", "🔄 Auto-Update (Task 3)",
+                 "🔬 Research (Task 4)", "🖼️ Visual AI (Task 5)", "🌐 Multilingual (Task 6)"]:
+        st.caption(f"✅ {_mod}")
+    st.divider()
+    st.caption("Built with LangChain · FAISS · Streamlit")
 
 # --- Session state initialisation ---
 if "feedback" not in st.session_state:
@@ -37,11 +170,19 @@ tab_chat, tab_medical, tab_update, tab_research, tab_multimodal, tab_analytics, 
 
 # ── CHAT TAB ──────────────────────────────────────────────────────────────────
 with tab_chat:
-    btn = st.button("Create Knowledgebase")
-    if btn:
-        create_vector_db()
+    st.markdown('<div class="section-header">💬 Customer Service Chat</div>', unsafe_allow_html=True)
+    st.caption("Ask any customer service question — sentiment-aware responses with empathy.")
 
-    question = st.text_input("Question: ", key="cs_question")
+    _chat_col1, _chat_col2 = st.columns([3, 1])
+    with _chat_col1:
+        question = st.text_input("Your question:", key="cs_question", placeholder="e.g. How do I track my order?")
+    with _chat_col2:
+        st.markdown("<br>", unsafe_allow_html=True)
+        btn = st.button("🗄 Build KB", help="Build the customer service knowledge base (first time only)")
+        if btn:
+            with st.spinner("Building knowledge base…"):
+                create_vector_db()
+            st.success("Knowledge base ready!")
 
     if question:
         sentiment_result = analyze_sentiment(question)
@@ -74,8 +215,9 @@ with tab_chat:
         response = chain(question)
         answer = response["result"]
 
-        st.header("Answer")
-        st.write(answer)
+        with st.container(border=True):
+            st.markdown("**Answer**")
+            st.write(answer)
 
         st.session_state.history.append({
             "question": question,
@@ -108,7 +250,7 @@ with tab_chat:
 
 # ── MEDICAL Q&A TAB ───────────────────────────────────────────────────────────
 with tab_medical:
-    st.subheader("Medical Q&A — Powered by MedQuAD (NIH)")
+    st.markdown('<div class="section-header">🏥 Medical Q&amp;A — Powered by MedQuAD (NIH)</div>', unsafe_allow_html=True)
     st.caption("5,068 Q&A pairs from CancerGov, GHR, NIDDK, NINDS, NHLBI")
 
     if st.button("Build Medical Knowledge Base"):
@@ -158,8 +300,9 @@ with tab_medical:
         try:
             med_chain = get_medical_qa_chain()
             med_response = med_chain(med_question)
-            st.header("Answer")
-            st.write(med_response["result"])
+            with st.container(border=True):
+                st.markdown("**Answer**")
+                st.write(med_response["result"])
 
             # Source attribution
             if med_response.get("source_documents"):
@@ -181,7 +324,7 @@ with tab_medical:
 
 # ── AUTO-UPDATE TAB ───────────────────────────────────────────────────────────
 with tab_update:
-    st.subheader("Dynamic Knowledge Base Expansion")
+    st.markdown('<div class="section-header">🔄 Dynamic Knowledge Base Expansion</div>', unsafe_allow_html=True)
     st.caption("Add new sources to either knowledge base — manually or on a recurring schedule.")
 
     kb_choice_options = list(knowledge_expander.KB_PATHS.keys())
@@ -498,7 +641,7 @@ with tab_research:
 
 # ── VISUAL AI TAB ─────────────────────────────────────────────────────────────
 with tab_multimodal:
-    st.subheader("🖼️ Visual AI — Multi-Modal Reasoning Assistant")
+    st.markdown('<div class="section-header">🖼️ Visual AI — Multi-Modal Reasoning Assistant</div>', unsafe_allow_html=True)
     st.caption(
         "Upload an image and ask a question. The assistant runs a 4-stage pipeline: "
         "image analysis → ambiguity detection → evidence-labelled response → self-critique validation."
@@ -606,8 +749,9 @@ with tab_multimodal:
             )
 
         # ── Answer ───────────────────────────────────────────────────────────
-        st.markdown("### Answer")
-        st.markdown(_final_answer)
+        with st.container(border=True):
+            st.markdown("**Answer**")
+            st.markdown(_final_answer)
 
         # ── Validation badge ─────────────────────────────────────────────────
         _v_col1, _v_col2, _v_col3 = st.columns([1, 1, 3])
@@ -656,7 +800,7 @@ with tab_multimodal:
 
 # ── ANALYTICS TAB ─────────────────────────────────────────────────────────────
 with tab_analytics:
-    st.subheader("Sentiment Analytics Dashboard")
+    st.markdown('<div class="section-header">📊 Sentiment Analytics Dashboard</div>', unsafe_allow_html=True)
 
     history = st.session_state.history
 
@@ -665,7 +809,7 @@ with tab_analytics:
     else:
         df = pd.DataFrame(history)
 
-        col_a, col_b, col_c = st.columns(3)
+        col_a, col_b, col_c, col_d = st.columns(4)
         col_a.metric("Total Queries", len(df))
         col_b.metric("Avg Confidence", f"{df['compound'].abs().mean():.2f}")
         total_fb = st.session_state.feedback["positive"] + st.session_state.feedback["negative"]
@@ -673,7 +817,10 @@ with tab_analytics:
             sat_pct = round(st.session_state.feedback["positive"] / total_fb * 100)
             col_c.metric("Satisfaction", f"{sat_pct}%")
         else:
-            col_c.metric("Satisfaction", "N/A")
+            col_c.metric("Satisfaction", "—")
+        _pos_count = (df["sentiment"] == "positive").sum()
+        _neg_count = (df["sentiment"] == "negative").sum()
+        col_d.metric("Positive / Negative", f"{_pos_count} / {_neg_count}")
 
         st.divider()
 
@@ -713,15 +860,15 @@ with tab_analytics:
 
 # ── MULTILINGUAL TAB ───────────────────────────────────────────────────────────
 with tab_multi:
-    st.subheader("🌐 Multilingual Conversation Assistant")
+    st.markdown('<div class="section-header">🌐 Multilingual Conversation Assistant</div>', unsafe_allow_html=True)
     st.caption("Type in any language — the assistant auto-detects, switches context, and responds in your language.")
 
-    # Supported languages display
-    lang_chips = "  ".join(
-        f"{get_lang_flag(code)} **{name}**"
-        for code, name in list(SUPPORTED_LANGUAGES.items())[:9]
+    # Styled language pill chips
+    _lang_pills_html = " ".join(
+        f'<span class="lang-pill">{get_lang_flag(code)} {name}</span>'
+        for code, name in list(SUPPORTED_LANGUAGES.items())
     )
-    st.markdown(f"**Supported languages:** {lang_chips}")
+    st.markdown(f"<div style='margin-bottom:0.6rem'>{_lang_pills_html}</div>", unsafe_allow_html=True)
     st.divider()
 
     _ml_question = st.text_input(
@@ -790,7 +937,8 @@ with tab_multi:
             st.warning(f"❓ **Clarification:** {_ml_ctx['clarifying_question']}")
 
         st.divider()
-        st.markdown(_ml_result["final_response"])
+        with st.container(border=True):
+            st.markdown(_ml_result["final_response"])
 
         # Cross-lingual notes expander
         _ml_notes = _ml_resp.get("cross_lingual_notes")
