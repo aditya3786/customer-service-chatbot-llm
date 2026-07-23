@@ -5,7 +5,7 @@ Implements a Retrieval-Augmented Generation (RAG) pipeline for the
 customer service chatbot using:
 
   - LLM        : Google Gemini 2.5 Flash (via langchain-google-genai)
-  - Embeddings : Google Generative AI embedding-001 (via langchain-google-genai)
+  - Embeddings : sentence-transformers/all-MiniLM-L6-v2 (local, offline)
   - Vector DB  : FAISS (local index stored in faiss_index/)
   - Data source: dataset/dataset.csv — 76 FAQ rows (prompt + response)
 
@@ -21,7 +21,8 @@ os.environ["USE_TF"] = "0"   # prevent TF crash on macOS (protobuf conflict)
 os.environ["USE_JAX"] = "0"
 
 from langchain_community.vectorstores import FAISS
-from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.document_loaders.csv_loader import CSVLoader
 from langchain_core.prompts import PromptTemplate
 from langchain.chains import RetrievalQA
@@ -40,11 +41,8 @@ llm = ChatGoogleGenerativeAI(
     temperature=0.1,   # low temperature for factual, consistent answers
 )
 
-embeddings = GoogleGenerativeAIEmbeddings(
-    model="models/text-embedding-004",
-    google_api_key=os.environ["GOOGLE_API_KEY"],
-    task_type="retrieval_document",
-)
+# Local embedding model — no API calls, no quota
+embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
 vectordb_file_path = "faiss_index"
 
