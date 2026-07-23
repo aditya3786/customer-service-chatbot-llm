@@ -4,8 +4,8 @@ os.environ["USE_JAX"] = "0"
 
 import csv
 from langchain_community.vectorstores import FAISS
-from langchain.schema import Document
-from langchain.prompts import PromptTemplate
+from langchain_core.documents import Document
+from langchain_core.prompts import PromptTemplate
 from langchain.chains import ConversationalRetrievalChain
 from langchain_helper import llm, embeddings
 
@@ -54,7 +54,7 @@ def _load_documents() -> list[Document]:
 def create_arxiv_vector_db():
     docs = _load_documents()
     # Split long abstracts for better retrieval granularity
-    from langchain.text_splitter import RecursiveCharacterTextSplitter
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
     splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100)
     split_docs = splitter.split_documents(docs)
     vectordb = FAISS.from_documents(documents=split_docs, embedding=embeddings)

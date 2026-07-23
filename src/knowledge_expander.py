@@ -22,8 +22,8 @@ from datetime import datetime
 import requests
 from bs4 import BeautifulSoup
 from langchain_community.vectorstores import FAISS
-from langchain.docstore.document import Document
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from langchain_helper import embeddings, vectordb_file_path as CS_INDEX_PATH
 from medical_helper import MEDICAL_VECTORDB_PATH
