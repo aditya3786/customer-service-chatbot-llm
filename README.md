@@ -1,215 +1,19 @@
-# Customer Service Chatbot with Sentiment Analysis, Medical Q&A & Dynamic Knowledge Updates
+# AI Assistant Suite — LLM Internship Project
 
-An end-to-end LLM-powered chatbot built with **Google Gemini**, **LangChain**, and **Streamlit** as part of the ElevanceSkills internship. Extends the training project with three internship tasks: sentiment-aware customer service, a medical Q&A system, and dynamic knowledge base expansion.
-
----
-
-## Problem Statement
-
-Customer support teams at e-learning platforms like Nullclass receive hundreds of repetitive queries daily. Two key challenges:
-
-1. **Volume** — human staff can't respond instantly at scale.
-2. **Tone mismatch** — a frustrated customer gets the same robotic response as a happy one, reducing satisfaction.
-
-This project addresses both by combining a RAG-based Q&A system with real-time sentiment detection. It is further extended with a specialized medical Q&A chatbot using NIH's MedQuAD dataset.
+An end-to-end AI assistant platform built with **Google Gemini 2.5 Flash**, **LangChain**, and **Streamlit** as part of the ElevanceSkills internship. Covers 6 tasks: sentiment-aware customer service, medical Q&A, dynamic knowledge expansion, arXiv research, multi-modal visual reasoning, and multilingual conversations.
 
 ---
 
-## Datasets
+## Internship Tasks
 
-| Dataset | Source | Size | Purpose |
-|---------|--------|------|---------|
-| `dataset/dataset.csv` | Nullclass FAQ sheet | 76 rows | Customer service Q&A |
-| `dataset/medquad.csv` | [MedQuAD (NIH)](https://github.com/abachaa/MedQuAD) | 5,068 rows | Medical Q&A |
-
----
-
-## Methodology
-
-### RAG Pipeline (shared by both chatbots)
-
-```
-User Question
-    ↓
-HuggingFace Embeddings (all-MiniLM-L6-v2, 384-dim, offline)
-    ↓
-FAISS Vector Store (cosine similarity, threshold=0.7)
-    ↓
-Top-k matching chunks as context
-    ↓
-Gemini 2.5 Flash (context + question → grounded answer)
-```
-
-**Why RAG over fine-tuning?**
-- No retraining when data updates — just rebuild the FAISS index
-- Answers grounded in source data, reducing hallucinations
-- "I don't know" fallback for out-of-scope questions
-
----
-
-## Task 1 — Sentiment Analysis Integration
-
-**Objective:** Detect customer emotions (positive/negative/neutral) and respond with appropriate tone.
-
-**Model: VADER (Valence Aware Dictionary and sEntiment Reasoner)**
-
-| Approach | Size | Latency | API Cost |
-|----------|------|---------|----------|
-| VADER *(chosen)* | ~2 MB | <1 ms | Free, offline |
-| Transformer (RoBERTa) | ~500 MB | ~100 ms | Free, offline |
-| Gemini API | N/A | ~1 s | Uses quota |
-
-VADER was selected because it is purpose-built for short conversational text, runs entirely offline, and requires no additional model download.
-
-**Sentiment thresholds (VADER standard):**
-- `compound ≥ 0.05` → Positive
-- `compound ≤ -0.05` → Negative
-- Otherwise → Neutral
-
-**Tone adaptation via prompt engineering:**
-
-| Sentiment | Injected instruction |
-|-----------|---------------------|
-| Negative | "Start by acknowledging their concern with empathy, then provide a clear and helpful answer." |
-| Positive | "Match their positive energy with a warm, encouraging tone." |
-| Neutral | *(no instruction — standard factual response)* |
-
-**Features:**
-- Color-coded sentiment badge (😊/😟/😐) with confidence score
-- Empathy/warmth message for negative/positive queries
-- Tone-adapted LLM responses via `PromptTemplate.partial()`
-- 👍/👎 feedback buttons with session satisfaction tracking
-- 📊 Analytics dashboard — sentiment pie chart, confidence bar chart, query history
-
-**Sample Questions:**
-
-| Sentiment | Question |
-|-----------|----------|
-| Negative | *"This is terrible, I can't find anything useful!"* |
-| Positive | *"I love this course, it's absolutely amazing!"* |
-| Neutral | *"Do you have a JavaScript course?"* |
-| Neutral | *"Should I learn Power BI or Tableau?"* |
-
----
-
-## Task 2 — Medical Q&A Chatbot (MedQuAD)
-
-**Objective:** Build a specialized medical Q&A chatbot with retrieval and basic medical entity recognition.
-
-**Dataset:** MedQuAD — 5,068 Q&A pairs parsed from 5 NIH sources:
-
-| Source | Topic | Pairs |
-|--------|-------|-------|
-| CancerGov | Cancer types & treatments | ~729 |
-| GHR (Genetics Home Reference) | Genetic conditions | ~1,500 |
-| NIDDK | Diabetes, kidney, digestive | ~1,192 |
-| NINDS | Neurological disorders | ~1,088 |
-| NHLBI | Heart, lung, blood diseases | ~559 |
-
-**Medical NER (Named Entity Recognition):**
-Keyword/regex-based entity detection — no heavy model required, runs fully offline.
-
-| Category | Color | Examples |
-|----------|-------|---------|
-| Disease/Condition | 🔴 Red | leukemia, diabetes, alzheimer |
-| Symptom | 🟠 Orange | fever, headache, fatigue |
-| Treatment | 🟢 Green | chemotherapy, insulin, surgery |
-
-**Features:**
-- "Build Medical Knowledge Base" button — embeds 5,068 docs into a separate FAISS index
-- Real-time entity highlighting in the question text
-- Entity badges showing detected terms and their category
-- RAG answer sourced from NIH data
-- Source document attribution (expandable)
-- ⚠️ Medical safety disclaimer on every response
-
-**Sample Questions:**
-
-| Source | Question |
-|--------|----------|
-| CancerGov | *"What are the symptoms of leukemia?"* |
-| NINDS | *"How is Alzheimer's disease treated?"* |
-| NIDDK | *"What is diabetes?"* |
-| NHLBI | *"What causes emphysema?"* |
-| Multi-entity | *"What causes fever and headache in pneumonia?"* |
-
----
-
-## Task 4 — arXiv Research Assistant (Domain Expert Chatbot)
-
-**Objective:** Build a domain-expert chatbot on CS research papers with advanced NLP (information extraction, summarization), an open-source LLM, paper searching, concept visualization, and follow-up question support.
-
-**Dataset:** 2,475 recent CS papers fetched from arXiv.org via API (`dataset/fetch_arxiv.py`), covering:
-
-| Category | Description |
-|----------|-------------|
-| cs.AI | Artificial intelligence |
-| cs.LG | Machine learning |
-| cs.CL | Computational linguistics / NLP |
-| cs.CV | Computer vision |
-| cs.NE | Neural and evolutionary computing |
-
-**Open-source LLM — DistilBART:** HuggingFace `sshleifer/distilbart-cnn-12-6` (~300MB, CPU-friendly, fully offline) used for abstractive paper summarization. Satisfies the "open-source LLM" requirement — no API quota, runs locally.
-
-**RAG with conversation memory:** `ConversationalRetrievalChain` (LangChain) + `ConversationBufferMemory` preserves context across follow-up questions in the same session. Each question is conditioned on prior Q&A history.
-
-**CS NER:** Same keyword/regex pattern as medical NER. Four categories:
-| Category | Color | Examples |
-|----------|-------|---------|
-| Algorithm/Model | 🔵 Blue | BERT, transformer, GAN, diffusion |
-| Dataset | 🟢 Green | ImageNet, SQuAD, COCO, GLUE |
-| Task | 🟡 Yellow | classification, detection, translation |
-| Framework | 🔴 Pink | PyTorch, TensorFlow, HuggingFace |
-
-**Features:**
-- Semantic paper search (FAISS, 8,278 indexed chunks)
-- Per-paper abstractive summarization via DistilBART
-- CS entity highlighting in abstracts (Algorithm/Model/Dataset/Task/Framework)
-- Research Q&A with multi-turn conversation memory
-- 3 Plotly concept visualizations: category distribution, year histogram, top-25 keywords
-- Direct arXiv links per paper
-
-**Sample Questions:**
-
-| Question | Expected |
-|----------|---------|
-| *"What is a diffusion model?"* | Answer citing recent diffusion papers |
-| *"How do large language models reason?"* | Sources from cs.AI/cs.CL papers |
-| *"Explain vision transformers"* | ViT-related papers cited |
-| *"How does this compare to CNNs?"* | Follow-up using prior context |
-
----
-
-## Task 3 — Dynamic Knowledge Base Expansion
-
-**Objective:** Build a mechanism to periodically update the vector database with new information from specified sources, so the chatbot incorporates new knowledge over time.
-
-**Incremental FAISS updates:** Rather than rebuilding the entire index, new content is merged into the existing FAISS index via `add_documents()` — fast and non-destructive to existing data.
-
-**Sources supported:**
-| Source | How it works |
-|--------|-------------|
-| URL | Fetches the page with `requests`, strips nav/script/style tags with `BeautifulSoup`, extracts clean text |
-| Manual Q&A | Prompt/response pair typed directly into the UI |
-
-**Dedup via content hashing:** Every ingested text is SHA-256 hashed. Re-ingesting unchanged content is skipped. If a source's content *changes* (e.g. a webpage is updated), the new hash differs and the fresh content is ingested — this is what makes updates dynamic rather than a one-time import.
-
-**Periodic refresh:** `APScheduler` runs a background job on a configurable interval (default 60 min) that re-checks all registered URL sources and re-ingests anything that changed. Sources are persisted to `src/sources_config.json` so registrations survive app restarts.
-
-**Generic across both knowledge bases:** The same mechanism updates either the Customer Service FAQ index or the Medical Q&A index — selectable per source.
-
-**Features:**
-- Live vector count per knowledge base
-- "Ingest once now" for immediate one-off additions
-- "Register for periodic refresh" for recurring sources
-- Configurable refresh interval + start/stop scheduler control
-- Full ingestion history table (source, target KB, timestamp, chunks added)
-
-**Example flow:**
-1. Register `https://example.com/new-course-faq` → target: Customer Service
-2. Click "Run refresh now" → page is fetched, chunked, embedded, merged into `faiss_index`
-3. Ask a question covering that new content in the Chat tab → answer reflects the newly added information
-4. Update the source page later → next scheduled refresh detects the hash change and re-ingests automatically
+| Task | Feature | Key Tech |
+|------|---------|----------|
+| **1** | Sentiment-aware customer service chat | VADER + Gemini RAG + FAISS |
+| **2** | Medical Q&A with NER entity highlighting | MedQuAD (5,068 NIH pairs) + medical NER |
+| **3** | Dynamic knowledge base expansion | URL ingestion + SHA-256 dedup + APScheduler |
+| **4** | arXiv research assistant + summarization | DistilBART + ConversationalRetrievalChain |
+| **5** | Multi-modal visual AI (4-stage pipeline) | Gemini Vision + evidence labeling + self-critique |
+| **6** | Multilingual conversations (3-stage pipeline) | `langdetect` + cross-lingual context + 12 languages |
 
 ---
 
@@ -218,22 +22,38 @@ Keyword/regex-based entity detection — no heavy model required, runs fully off
 ```
 customer_service_chatbot_LLM/
 ├── dataset/
-│   ├── dataset.csv              # 76-row Nullclass FAQ dataset
-│   ├── medquad.csv              # 5,068-row medical Q&A dataset
-│   ├── parse_medquad.py         # XML parser to regenerate medquad.csv
-│   ├── arxiv_cs_sample.csv      # 2,475-row arXiv CS papers dataset
-│   └── fetch_arxiv.py           # arXiv API fetcher to regenerate arxiv_cs_sample.csv
+│   ├── dataset.csv              # 76-row Nullclass FAQ (customer service)
+│   ├── medquad.csv              # 5,068-row medical Q&A (NIH)
+│   ├── arxiv_cs_sample.csv      # 2,475-row arXiv CS papers
+│   ├── fetch_arxiv.py           # arXiv API fetcher
+│   └── parse_medquad.py         # MedQuAD XML parser
 ├── src/
-│   ├── main.py                  # Streamlit UI (5 tabs: Chat, Medical Q&A, Auto-Update, Research, Analytics)
-│   ├── langchain_helper.py      # Customer service RAG pipeline
-│   ├── sentiment_analyzer.py    # VADER sentiment detection (Task 1)
+│   ├── main.py                  # Streamlit UI (7 tabs)
+│   ├── langchain_helper.py      # Customer service RAG chain + shared LLM
+│   ├── sentiment_analyzer.py    # VADER sentiment (Task 1)
 │   ├── medical_helper.py        # Medical RAG pipeline (Task 2)
 │   ├── medical_ner.py           # Medical entity recognition (Task 2)
-│   ├── knowledge_expander.py    # Ingestion + dedup + incremental FAISS updates (Task 3)
-│   ├── kb_scheduler.py          # Periodic background refresh scheduler (Task 3)
-│   ├── arxiv_helper.py          # arXiv RAG pipeline with conversation memory (Task 4)
-│   ├── cs_ner.py                # CS domain entity recognition (Task 4)
-│   └── summarizer.py            # DistilBART abstractive summarization (Task 4)
+│   ├── knowledge_expander.py    # URL ingestion + FAISS updates (Task 3)
+│   ├── kb_scheduler.py          # Periodic refresh scheduler (Task 3)
+│   ├── arxiv_helper.py          # arXiv RAG + conversation memory (Task 4)
+│   ├── cs_ner.py                # CS domain NER (Task 4)
+│   ├── summarizer.py            # DistilBART summarization (Task 4)
+│   ├── multimodal_assistant.py  # 4-stage vision pipeline (Task 5)
+│   └── multilingual_assistant.py# 3-stage multilingual pipeline (Task 6)
+├── tests/
+│   ├── test_task1_sentiment.py
+│   ├── test_task2_medical_ner.py
+│   ├── test_task3_knowledge_base.py
+│   ├── test_task4_research.py
+│   ├── test_task5_multimodal.py
+│   └── test_task6_multilingual.py
+├── docs/
+│   ├── task1_sentiment_analysis.md
+│   ├── task2_medical_qa.md
+│   ├── task3_knowledge_expansion.md
+│   ├── task4_research_assistant.md
+│   ├── task5_multimodal_assistant.md
+│   └── task6_multilingual_assistant.md
 ├── requirements.txt
 └── README.md
 ```
@@ -244,7 +64,7 @@ customer_service_chatbot_LLM/
 
 ### Prerequisites
 - Python 3.9+
-- Google Gemini API key (free at [aistudio.google.com](https://aistudio.google.com/app/apikey))
+- Google Gemini API key — free at [aistudio.google.com](https://aistudio.google.com/app/apikey)
 
 ### Steps
 
@@ -256,7 +76,7 @@ cd customer-service-chatbot-llm
 # 2. Install dependencies
 pip install -r requirements.txt
 
-# 3. Create your .env file in src/
+# 3. Add your API key
 echo 'GOOGLE_API_KEY="your_key_here"' > src/.env
 
 # 4. Run the app
@@ -264,49 +84,107 @@ cd src
 USE_TF=0 USE_JAX=0 streamlit run main.py
 ```
 
+The app opens at **http://localhost:8501**
+
 ---
 
 ## Usage
 
-### 💬 Chat Tab (Customer Service)
-1. Click **"Create Knowledgebase"** on first run (~10 seconds)
-2. Ask a question → see sentiment badge + tone-adapted answer
-3. Rate with 👍/👎 — satisfaction % updates live
+### 💬 Chat Tab — Customer Service (Task 1)
+1. Click **"🗄 Build KB"** on first run (~10 s)
+2. Type any customer service question
+3. See sentiment badge (😊/😐/😟) + confidence score + tone-adapted answer
+4. Rate with 👍/👎 — session satisfaction % updates live
 
-### 🏥 Medical Q&A Tab
-1. Click **"Build Medical Knowledge Base"** on first run (~60 seconds)
-2. Ask a medical question → entities highlighted + NIH-sourced answer
-3. Expand **"Source documents"** to see retrieved passages
+### 🏥 Medical Q&A Tab (Task 2)
+1. Click **"Build Medical Knowledge Base"** on first run (~60 s, embeds 5,068 NIH Q&A pairs)
+2. Ask a medical question — detected entities are color-highlighted
+3. View NIH-sourced answer + expandable source documents
+4. Medical safety disclaimer shown on every response
 
-### 🔄 Auto-Update Tab
-1. Add a URL or manual Q&A entry, choose the target knowledge base
-2. "Ingest once now" for an immediate one-off update, or "Register for periodic refresh" for recurring sources
-3. Start the scheduler to auto-refresh registered sources on an interval
-4. View live vector counts and full ingestion history
+### 🔄 Auto-Update Tab (Task 3)
+1. Paste a URL or type a manual Q&A pair, choose target knowledge base
+2. **"Ingest once now"** — immediate one-off ingestion with SHA-256 dedup
+3. **"Register for periodic refresh"** — recurring ingestion on a configurable interval
+4. Start/stop the background scheduler; view live vector counts and full ingestion history
 
-### 🔬 Research Tab (arXiv)
-1. Click **"Build Research Knowledge Base"** on first run (~60–90 seconds)
-2. Enter a semantic query → see top-5 relevant papers with CS entity highlights
-3. Click **"📄 Summarize"** on any paper → DistilBART generates a concise summary
-4. Ask a research question in the Q&A section → Gemini answers citing paper titles
-5. Ask follow-up questions — conversation context is preserved in the session
-6. Scroll down for concept visualization charts (category distribution, year histogram, keywords)
+### 🔬 Research Tab (Task 4)
+1. Click **"Build Research Knowledge Base"** on first run (~90 s, indexes 2,475 papers)
+2. Enter a semantic query → top-5 papers with CS entity highlighting
+3. Click **"📄 Summarize"** → DistilBART generates a concise abstract summary (offline)
+4. Ask a research question with follow-up support — conversation context is preserved per session
+5. Scroll down for concept visualization charts (category distribution, year histogram, top keywords)
 
-### 📊 Analytics Tab
-- Sentiment distribution pie chart
-- Confidence score bar chart per query
+### 🖼️ Visual AI Tab (Task 5)
+1. Upload a JPEG, PNG, or WebP image
+2. Optionally type a question (or leave blank for a full image description)
+3. Click **"🔍 Analyze"** — the 4-stage pipeline runs:
+   - **Stage 1** — structured image analysis (scene type, objects, OCR, colors)
+   - **Stage 2** — ambiguity detection (surfaces assumptions if the question is vague)
+   - **Stage 3** — evidence-labelled answer (`[seen in image]` / `[inferred]` / `[general knowledge]`)
+   - **Stage 4** — self-critique validation (confidence score 0–1, caveats, auto-correction)
+4. Ask follow-up questions — the same image context is retained across turns
+
+### 📊 Analytics Tab (Task 1)
+- Live KPI tiles: total queries, average confidence, satisfaction %, positive/negative split
+- Sentiment distribution pie chart + confidence bar chart per query
 - Full query history table
+
+### 🌐 Multilingual Tab (Task 6)
+1. Type a message in **any language** (or mix languages)
+2. Click **"Send"** — the 3-stage pipeline runs:
+   - **Stage 1** — language detection (`langdetect`) + language-switch flag + mixed-language segmentation
+   - **Stage 2** — cross-lingual context resolution using up to 5 prior turns across all languages
+   - **Stage 3** — response generated entirely in your detected language
+3. Language switch banners appear when you change languages mid-conversation
+4. Prior context is always retained across language boundaries
+5. "Language timeline" expander shows the language used per turn
+
+**Supported languages:** 🇬🇧 English · 🇪🇸 Spanish · 🇫🇷 French · 🇮🇳 Hindi · 🇩🇪 German · 🇨🇳 Chinese · 🇯🇵 Japanese · 🇸🇦 Arabic · 🇵🇹 Portuguese · 🇮🇹 Italian · 🇰🇷 Korean · 🇷🇺 Russian
 
 ---
 
-## Internship Tasks Completed
+## Architecture
 
-| Task | Feature | Status |
-|------|---------|--------|
-| Task 1 | Sentiment Analysis Integration | ✅ Complete |
-| Task 2 | Medical Q&A Chatbot (MedQuAD) | ✅ Complete |
-| Task 3 | Dynamic Knowledge Base Expansion | ✅ Complete |
-| Task 4 | arXiv Research Assistant (Domain Expert Chatbot) | ✅ Complete |
+### Shared RAG Pipeline (Tasks 1–4)
+```
+User Question
+    ↓
+HuggingFace Embeddings (all-MiniLM-L6-v2, 384-dim, offline)
+    ↓
+FAISS Vector Store (cosine similarity, score threshold 0.7)
+    ↓
+Top-k matching chunks as context
+    ↓
+Gemini 2.5 Flash (context + question → grounded answer)
+```
+
+### Task 5 — 4-Stage Vision Pipeline
+```
+Image + Question → Gemini Vision (Stage 1: structured analysis)
+                → Text LLM (Stage 2: ambiguity detection)
+                → Gemini Vision (Stage 3: evidence-labelled response)
+                → Text LLM (Stage 4: self-critique validation)
+                → Final answer
+```
+
+### Task 6 — 3-Stage Multilingual Pipeline
+```
+Text (any language) → langdetect (Stage 1: language ID + switch detection)
+                    → Text LLM (Stage 2: cross-lingual context resolution)
+                    → Text LLM (Stage 3: response in user's language)
+                    → Final answer
+```
+
+---
+
+## Datasets
+
+| Dataset | Source | Size | Used By |
+|---------|--------|------|---------|
+| `dataset/dataset.csv` | Nullclass FAQ | 76 rows | Task 1 |
+| `dataset/medquad.csv` | MedQuAD (NIH) | 5,068 rows | Task 2 |
+| `dataset/arxiv_cs_sample.csv` | arXiv API | 2,475 papers | Task 4 |
 
 ---
 
@@ -316,14 +194,30 @@ USE_TF=0 USE_JAX=0 streamlit run main.py
 |-----------|-----------|
 | LLM | Google Gemini 2.5 Flash |
 | Orchestration | LangChain |
-| Embeddings | sentence-transformers/all-MiniLM-L6-v2 |
+| Embeddings | sentence-transformers/all-MiniLM-L6-v2 (offline) |
 | Vector Store | FAISS |
 | Sentiment Analysis | NLTK VADER |
-| Medical NER | Keyword/regex dictionary |
+| Language Detection | `langdetect` (open-source, offline) |
+| Medical / CS NER | Keyword + regex dictionary |
+| Summarization (open-source LLM) | DistilBART — `sshleifer/distilbart-cnn-12-6` |
+| Conversation Memory | LangChain ConversationalRetrievalChain |
 | Scheduling | APScheduler |
-| Web scraping | Requests + BeautifulSoup |
-| Paper summarization | DistilBART (sshleifer/distilbart-cnn-12-6) |
-| Conversation memory | LangChain ConversationalRetrievalChain |
-| arXiv data fetch | arxiv Python library |
+| Web Scraping | Requests + BeautifulSoup4 |
+| Image Handling | Pillow |
 | UI | Streamlit |
 | Visualizations | Plotly |
+
+---
+
+## Running Tests
+
+```bash
+# All tests
+python -m pytest tests/ -v
+
+# Individual task
+python -m pytest tests/test_task5_multimodal.py -v
+python -m pytest tests/test_task6_multilingual.py -v
+```
+
+All LLM calls are mocked — no API quota is consumed by tests.
