@@ -17,6 +17,9 @@ dataset/MedQuAD/
 src/ingestion_log.json
 src/sources_config.json
 
+# Streamlit Cloud secrets (never commit — set via dashboard)
+.streamlit/secrets.toml
+
 # macOS
 .DS_Store
 
